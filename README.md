@@ -210,3 +210,101 @@ void sendSensorData(float nh3, float co2, float so2, int pm25) {
     Serial.println("❌ WiFi not connected!");
   }
 }
+
+//Receiver side lora code
+
+#include <SPI.h>
+#include <LoRa.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// === OLED settings ===
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// === LoRa Pins ===
+#define LORA_SS 5
+#define LORA_RST 14
+#define LORA_DIO0 26
+
+void setup() {
+  Serial.begin(115200);
+
+  // === OLED Init ===
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("❌ OLED not found");
+    while (true);
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println("LoRa Receiver");
+  display.println("Waiting for data...");
+  display.display();
+
+  // === LoRa Init ===
+  LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
+  if (!LoRa.begin(433E6)) {
+    Serial.println("❌ LoRa init failed");
+    while (true);
+  }
+  Serial.println("✅ LoRa Receiver Ready");
+}
+
+void loop() {
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    String received = "";
+    while (LoRa.available()) {
+      received += (char)LoRa.read();
+    }
+    Serial.println("📩 Received LoRa Data: " + received);
+    showParsedData(received);
+  }
+}
+
+// === Display Parsed Data ===
+void showParsedData(String data) {
+  float nh3 = 0, co2 = 0, so2 = 0;
+  int pm25 = 0;
+
+  int idx1 = data.indexOf(',');
+  int idx2 = data.indexOf(',', idx1 + 1);
+  int idx3 = data.indexOf(',', idx2 + 1);
+
+  if (idx1 > 0 && idx2 > idx1 && idx3 > idx2) {
+    nh3 = data.substring(0, idx1).toFloat();
+    co2 = data.substring(idx1 + 1, idx2).toFloat();
+    so2 = data.substring(idx2 + 1, idx3).toFloat();
+    pm25 = data.substring(idx3 + 1).toInt();
+
+    // === OLED Display ===
+  display.clearDisplay();
+    display.setCursor(0, 0);
+    display.setTextSize(1);
+    display.println("Air Quality Monitor");
+    display.println("---------------------");
+    display.printf("NH3  : %.1f ppm\n", nh3);
+    display.printf("CO2  : %.1f ppm\n", co2);
+    display.printf("SO2  : %.2f ppm\n", so2);
+    display.printf("PM2.5: %d ug/m3\n", pm25);
+    display.display();
+
+    // === Serial Monitor Output ===
+    Serial.printf("✅ NH3: %.1f ppm | CO2: %.1f ppm | SO2: %.2f ppm | PM2.5: %d ug/m3\n",
+                  nh3, co2, so2, pm25);
+  } else {
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.setTextSize(1);
+    display.println("❌ Invalid LoRa Data");
+    display.display();
+    Serial.println("❌ Data format error");
+  }
+}
+
+
